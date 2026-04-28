@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="cs">
+    <head>
+        <meta charset="UTF-8">
+        <title>Slepá mapa</title>
+
+        <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+        <style>
+            body {
+                margin: 0;
+                font-family: Arial, Helvetica, sans-serif;
+            }
+            header {
+                padding: 20px 0px;
+                height: 60px;
+                border-bottom: 2px solid rgb(192, 144, 56);
+                background-color: rgb(255, 200, 98);
+                text-align: center;
+            }
+            #nadpis {
+                margin: 0;
+                font-size: 50px;
+            }
+            .sidebar {
+                position: fixed;
+                display: flex;
+                flex-wrap: wrap;
+                justify-content: center;
+                align-content: flex-start;
+                width: 20%;
+                height: 100%;
+                right: 0;
+                top: 102px;
+                background-color: rgb(255, 208, 120);
+                border-left: 2px solid rgb(255, 200, 98);
+            }
+            .vlajka {
+                margin: 20px;
+                border: 2px solid black;
+                width: 60%; 
+            }
+            #mapa {
+                position: fixed;
+                width: 80%;
+                height: calc(100vh - 102px);
+            }
+            #zkontrolovat {
+                display: none;
+                position: fixed;
+                font-size: 20px;
+                width: 10%;
+                height: 7.5%;
+                right: 50%;
+                transform: translate(50%, 0);
+                bottom: 5%;
+                background-color: rgb(37, 255, 37);
+                border: 3px solid green;
+            }
+            #zkontrolovat:hover {
+                background-color: green;
+            }
+            #vysledky {
+                display: none;
+                text-align: center;
+                position: fixed;
+                width: 50%;
+                height: 15%;
+                bottom: 5%;
+                left: 50%;
+                transform: translate(-50%, 0);
+                background-color: rgb(255, 200, 98);
+                border: 2px solid rgb(192, 144, 56);
+            }
+            #vysledky-nadpis {
+                margin: 0;
+                width: 200px;
+                position: absolute;
+                top: 10px;
+                left: 10px;
+                font-size: 40px;
+                text-shadow: 0px 0px 3px black;
+            }
+            #vysledky-text {
+                margin: 0;
+                position: absolute;
+                left: 250px;
+                top: 50%;
+                transform: translate(0, -50%);
+                font-size: 25px;
+            }
+            #vysledky-hrat-znovu {
+                position: absolute;
+                font-size: 20px;
+                bottom: 10px;
+                left: 10px;
+                width: 200px;
+                height: 50px;
+                background-color: rgb(255, 78, 55);
+                border: 3px solid rgb(148, 5, 5);
+            }
+            #vysledky-trofej {
+                display: none;
+                position: absolute;
+                height: 90%;
+                transform: translate(0, 5%);
+                right: 10px;
+            }
+            #vysledky-hrat-znovu:hover {
+                background-color: rgb(204, 62, 43);
+            }
+
+
+        </style>
+    </head>
+
+    <body>
+        <header>
+            <h3 id="nadpis">Přiřaďte vlajky správným zemím</h3>
+        </header>
+
+        <div id="mapa"></div>
+        <div class="sidebar">
+            <img src="static/img/Flag_of_the_United_States.png" class="vlajka" id="US" draggable="true">
+            <img src="static/img/Flag_of_the_United_Kingdom.png" class="vlajka" id="GB" draggable="true">  
+            <img src="static/img/Flag_of_Australia.png" class="vlajka" id="AU" draggable="true">
+            <img src="static/img/Flag_of_New_Zealand.png" class="vlajka" id="NZ" draggable="true">
+            <img src="static/img/Flag_of_Canada.png" class="vlajka" id="CA" draggable="true">
+        </div>
+
+        <button id="zkontrolovat"><b>Zkontrolovat</b></button>
+
+        <div id="vysledky">
+            <h3 id="vysledky-nadpis"></h3>
+            <p id="vysledky-text"></p>
+            <img src="static/img/trofej.png" alt="" id="vysledky-trofej">
+            <button id="vysledky-hrat-znovu" onclick="location.reload()"><b>Hrát Znovu</b></button>
+        </div>
+    </body>
+
+    <script src="geo_data.js"></script>
+    <script>
+        let seznamZemi = ["US", "GB", "AU", "NZ", "CA"]
+
+        const nazvyZemi = {
+            "US": "USA",
+            "GB": "Velká Británie",
+            "CA": "Kanada",
+            "NZ": "Nový Zéland",
+            "AU": "Austrálie"
+        };
+
+        const barvyZemi = {
+            "US": "#0055ff",
+            "GB": "#ff0000",
+            "CA": "#ff9900",
+            "NZ": "#00aa00",
+            "AU": "#800080"
+        };
+
+        let vysledky = {};
+        let vybranaVlajka;
+
+        // MAPA
+        const southWest = L.latLng(-85, -180);
+        const northEast = L.latLng(85, 180);
+        const bounds = L.latLngBounds(southWest, northEast);
+
+        const map = L.map('mapa', {
+            maxBounds: bounds,
+            maxBoundsViscosity: 1.0,
+            minZoom: 2
+        }).setView([0, 0], 2);
+
+        // TILE LAYER
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png', {
+            maxZoom: 19,
+            attribution: '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+            noWrap: true
+        }).addTo(map);
+
+        // VYBRÁNÍ VLAJEK
+        document.querySelectorAll('.vlajka').forEach(img => {
+            img.addEventListener('click', (e) => {
+                e.stopPropagation(); // Aby se hned nespustil deselect na mapě
+                // Zrušení výběru u ostatních
+                document.querySelectorAll('.vlajka').forEach(v => {
+                    v.style.border = `2px solid black`;
+                    v.style.width = '60%';
+                });
+
+                // Změna nadpisu na vybranou zemi
+                const nadpis = document.getElementById('nadpis');
+                nadpis.innerText = nazvyZemi[img.id];
+                nadpis.style.textDecoration = 'underline';
+
+                // Nastavení nově vybrané vlajky
+                vybranaVlajka = img.id;
+                vybranaVlajka = img.id;
+                img.style.border = `5px solid ${barvyZemi[img.id]}`;
+                img.style.width = '65%';
+            });
+        });
+
+        function deselect() {
+            vybranaVlajka = null;
+            document.querySelectorAll('.vlajka').forEach(v => {
+                v.style.border = `2px solid black`; // Opraveno z 'element' na 'v'
+                v.style.width = '60%';
+            });
+
+            const nadpis = document.getElementById('nadpis');
+            nadpis.innerText = 'Přiřaďte vlajky správným zemím';
+            nadpis.style.textDecoration = 'none';
+        }
+
+        map.on('click', () => {
+            deselect();
+        })
+
+        //
+        // GEOJSON
+        //
+
+        // Kontrola, zda jsou všechny vlajky přiřazeny
+        function aktualizujTlacitko() {
+            const tlacitko = document.getElementById('zkontrolovat');
+            if (Object.keys(vysledky).length === seznamZemi.length)
+                tlacitko.style.display = 'block';
+            else
+                tlacitko.style.display = 'none';
+        }
+
+        // Funkce pro "zapíchnutí" vlajky do země
+        function priradVlajku(kodZeme, layer) {
+            vysledky[kodZeme] = vybranaVlajka;
+            layer.setStyle({
+                fillColor: barvyZemi[vybranaVlajka],
+                fillOpacity: 0.9
+            });
+            document.getElementById(vybranaVlajka).style.visibility = 'hidden';
+            deselect();
+            aktualizujTlacitko();
+        }
+
+        // Funkce pro vrácení vlajky zpět do menu
+        function vratVlajku(kodZeme, layer) {
+            const idVracene = vysledky[kodZeme];
+            document.getElementById(idVracene).style.visibility = 'visible';
+            delete vysledky[kodZeme];
+            geoLayer.resetStyle(layer);
+        }
+
+        const geoLayer = L.geoJSON(geoData, {
+            filter: (feature) => seznamZemi.includes(feature.properties.iso_a2),
+            style: {fillColor: "#000000", weight: 1, opacity: 1, fillOpacity: 0.7, color: '#666'},
+
+            onEachFeature: (feature, layer) => {
+            // Získání kódu země z GeoJSON dat (např. "US", "CA")
+            const kodZeme = feature.properties.iso_a2;
+
+            layer.on('click', (e) => {
+                // Zastavíme probublávání, aby se nespustil resetSelection na mapě
+                L.DomEvent.stopPropagation(e);
+
+                // SCÉNÁŘ A: Máš vybranou vlajku a země je prázdná -> PŘIŘADIT
+                if (vybranaVlajka && !vysledky[kodZeme]) {
+                    priradVlajku(kodZeme, layer);
+                } 
+
+                // SCÉNÁŘ B: Nahradíš doplněnou zemi nově vybranou
+                else if (vysledky[kodZeme] && vybranaVlajka) {
+                    vratVlajku(kodZeme, layer);
+                    priradVlajku(kodZeme, layer);
+                }
+                
+                // SCÉNÁŘ C: Klikneš na zemi, kde už vlajka je -> VRÁTIT JI
+                else if (vysledky[kodZeme]) {
+                    vratVlajku(kodZeme, layer);
+                }
+            });
+        }
+        }).addTo(map)
+
+        //
+        // KONTROLA VÝSLEDKŮ
+        //
+
+        document.getElementById('zkontrolovat').onclick = () => {
+            document.getElementById('zkontrolovat').style.display = 'none';
+            let pocetSpravnych = 0;
+            let chybneVolby = {};
+
+            geoLayer.eachLayer((layer) => {
+                const kodZeme = layer.feature.properties.iso_a2;
+                const tipUzivatele = vysledky[kodZeme];
+
+                if (tipUzivatele) {
+                    // SCÉNÁŘ: Uživatel zemi vyplnil
+                    if (tipUzivatele === kodZeme) {
+                        // SPRÁVNĚ -> Zelená
+                        layer.setStyle({
+                            fillColor: '#28a745', 
+                            fillOpacity: 1,
+                            color: 'white',
+                            weight: 3
+                        });
+                        pocetSpravnych++;
+                    } else {
+                        // ŠPATNĚ -> Červená
+                        layer.setStyle({
+                            fillColor: '#dc3545', 
+                            fillOpacity: 1,
+                            color: 'white',
+                            weight: 3
+                        });
+                        chybneVolby[kodZeme] = (tipUzivatele);
+                    }
+                }
+            });
+
+            // POPUP S VÝSLEDKY
+            const vysledky_popup = document.getElementById('vysledky');
+            const vysledky_nadpis = document.getElementById('vysledky-nadpis');
+            const vysledky_text = document.getElementById('vysledky-text');
+            vysledky_popup.style.display = 'block';
+
+            // NADPIS A JEHO BARVA
+            vysledky_nadpis.textContent = pocetSpravnych + "/5";
+            if (pocetSpravnych <= 1)
+                vysledky_nadpis.style.color = '#dc3545';
+            else if (pocetSpravnych <= 3 && pocetSpravnych > 1)
+                vysledky_nadpis.style.color = 'orange';
+            else if (pocetSpravnych >= 4)
+                vysledky_nadpis.style.color = '#28a745';
+
+            const chybyKlice = Object.keys(chybneVolby);
+            const pocetChyb = chybyKlice.length;
+
+            // VÝPIS CHYB
+            let chyby_text = "";
+            if (pocetChyb === 0) {
+                chyby_text = "Dobrá práce";
+                vysledky_text.style.fontSize = "50px";
+                vysledky_text.style.color = "green";
+                vysledky_text.style.fontWeight = "bold";
+                vysledky_text.style.width = "60%";
+                document.getElementById('vysledky-trofej').style.display = 'block';
+            }
+            else if (pocetChyb === 2)
+                chyby_text = nazvyZemi[chybyKlice[0]] + " a " + nazvyZemi[chybyKlice[1]] + " jsou prohozeny.";
+            else {
+                for (let i = 0; i < pocetChyb; i++) {
+                    chyby_text += "Zadali jste " + nazvyZemi[chybneVolby[chybyKlice[i]]] + " tam, kde má být " + nazvyZemi[chybyKlice[i]] + ".";
+                    if (i < pocetChyb - 1)
+                        chyby_text += " ";
+                }
+            }
+
+            vysledky_text.textContent = chyby_text;
+        };
+
+    </script>
+</html>
